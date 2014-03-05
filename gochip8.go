@@ -7,6 +7,8 @@ import (
 	"bytes"
 	"fmt"
 	"time"
+	"os"
+	"io/ioutil"
 )
 
 var font = [80]byte{
@@ -41,13 +43,22 @@ type Chip8 struct {
 	height     int
 }
 
-func NewChip8() *Chip8 {
+// Takes filename of the rom to load and returns initialised Chip8
+func NewChip8(fileName string) *Chip8 {
 	cpu := new(Chip8)
 	cpu.pc = 0x200
 	cpu.width = 64
 	cpu.height = 32
 	for i := 0; i < 80; i++ { // Load the font into the first 80 bytes of memory
 		cpu.memory[i] = font[i]
+	}
+	rom, error := ioutil.ReadFile(fileName); //Open rom file
+	if error != nil { 
+		panic(error) 
+	}
+	// Need check here to make sure rom fits in memory
+	for i := 0; i < len(rom); i++ { // Read rom into memory
+		cpu.memory[0x200 + i] = rom[i]
 	}
 	return cpu
 }
@@ -80,12 +91,22 @@ func (chip8 *Chip8) String() string {
 }
 
 func main() {
-	chip8 := NewChip8()
-	for {
-		chip8.Step() // Step cpu cycle
-		// Should have check for draw flag here
-		// Draw does not occur every cycle
-		fmt.Print("\x0c", chip8)     // Refresh screen.
-		time.Sleep(time.Second / 60) //Run at 60Hz
+	args := os.Args;
+	if len(args)>1 {
+		chip8 := NewChip8(args[1]) // Assume 
+	//	for {  main loop off for developemnt
+			chip8.Step() // Step cpu cycle
+			// Should have check for draw flag here
+			// Draw does not occur every cycle
+			fmt.Print("\n", chip8)     // Refresh screen.
+			time.Sleep(time.Second / 60) //Run at 60Hz
+	//	}
+		for i := 0; i < len(chip8.memory); i++ { // Print memory map to check things went well, for debug
+			fmt.Print(" ", chip8.memory[i])
+		}
+	} else {
+		fmt.Print("Must provide rom as argument")
 	}
+	
+	
 }
