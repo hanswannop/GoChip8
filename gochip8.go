@@ -29,13 +29,16 @@ var font = [80]byte{
 }
 
 type Chip8 struct {
-	opcode uint16
-	memory [4096]byte
-	v      [16]byte
-	index  uint16
-	pc     uint16
-	width  int
-	height int
+	opcode     uint16
+	memory     [4096]byte
+	v          [16]byte
+	stack      [16]uint16
+	index      uint16
+	pc         uint16
+	delayTimer int
+	soundTimer int
+	width      int
+	height     int
 }
 
 func NewChip8() *Chip8 {
@@ -43,7 +46,9 @@ func NewChip8() *Chip8 {
 	cpu.pc = 0x200
 	cpu.width = 64
 	cpu.height = 32
-
+	for i := 0; i < 80; i++ { // Load the font into the first 80 bytes of memory
+		cpu.memory[i] = font[i]
+	}
 	return cpu
 }
 
