@@ -31,16 +31,17 @@ var font = [80]byte{
 }
 
 type Chip8 struct {
-	opcode     uint16
-	memory     [4096]byte
-	v          [16]byte
-	stack      [16]uint16
-	index      uint16
-	pc         uint16
-	delayTimer int
-	soundTimer int
-	width      int
-	height     int
+	opcode     uint16		// Current opcode
+	memory     [4096]byte	// 4k of memory 
+	v          [16]byte		// Registers v[15] holds carry flag
+	stack      [16]uint16	// Stack can hold 16 addresses for functions / callbacks
+	sp			byte		// Stack pointer, index to top of stack
+	index      uint16		// Temp store for addresses, only low 12 bits used
+	pc         uint16		// Program counter (address of next instruction)
+	delayTimer int          // Counts down at 60Hz when set > 0
+	soundTimer int          // Counts down at 60Hz when set > 0
+	width      int 			// Screen width in pixels
+	height     int 			// Screen height in pixels
 }
 
 // Takes filename of the rom to load and returns initialised Chip8
@@ -64,14 +65,38 @@ func NewChip8(fileName string) *Chip8 {
 }
 
 //Step a cpu cycle
-func (chip *Chip8) Step() {
+func (chip8 *Chip8) Step() {
 	// Fetch
-	chip.opcode = uint16(chip.memory[chip.pc]<<8) | uint16(chip.memory[chip.pc+1]) // OR value of two consecutive addresses to get two byte opcode
-	// Decode
-	switch {
-	// Execute
+	chip8.opcode = uint16(chip8.memory[chip8.pc]<<8) | uint16(chip8.memory[chip8.pc+1]) // OR value of two consecutive addresses to get two byte opcode
+	// Decode & execute
+	switch chip8.opcode & 0xF000 {
+	case 0x1000 : { // 1NNN Jumps to adress NNN
+		chip8.pc = chip8.opcode & 0x0FFF
 	}
-
+	case 0x2000 : { // 2NNN Calls subroutine at NNN
+		chip8.stack[chip8.sp] = chip8.pc
+		chip8.sp++
+		chip8.pc = chip8.opcode & 0x0FFF
+	}
+	case 0x3000 : { // 3XKK Skips next instruction if V[X] = KK
+		if chip8.v[(chip8.opcode & 0x0F00) >> 8] == byte(chip8.opcode & 0x00FF){
+			chip8.pc += 4
+		} else {
+			chip8.pc += 2
+		}
+	}
+	case 0x4000 : {
+		
+	}
+	case 0xA000 : {	// ANNN Sets index to adress NNN
+		chip8.index = chip8.opcode & 0x0FFF
+		chip8.pc += 2; 
+	}
+	default: {
+		fmt.Printf("Opcode not implemented: 0x%X\n", chip8.opcode)
+		chip8.pc += 2; 
+	}
+	}
 }
 
 // Renders the screen of the as a string.
@@ -93,7 +118,8 @@ func (chip8 *Chip8) String() string {
 func main() {
 	args := os.Args;
 	if len(args)>1 {
-		chip8 := NewChip8(args[1]) // Assume 
+		fmt.Print(args[1])
+		chip8 := NewChip8(args[1]) // Assume args[1] is filename of rom 
 	//	for {  main loop off for developemnt
 			chip8.Step() // Step cpu cycle
 			// Should have check for draw flag here
@@ -102,11 +128,9 @@ func main() {
 			time.Sleep(time.Second / 60) //Run at 60Hz
 	//	}
 		for i := 0; i < len(chip8.memory); i++ { // Print memory map to check things went well, for debug
-			fmt.Print(" ", chip8.memory[i])
+			fmt.Printf("%X ", chip8.memory[i])
 		}
 	} else {
-		fmt.Print("Must provide rom as argument")
-	}
-	
-	
+		fmt.Print("Must provide rom as argument.\n")
+	}	
 }
