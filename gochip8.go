@@ -85,8 +85,12 @@ func (chip8 *Chip8) Step() {
 			chip8.pc += 2
 		}
 	}
-	case 0x4000 : {
-		
+	case 0x4000 : { // 4XKK Skips next instruction if V[X] != KK
+		if casehip8.v[(chip8.opcode & 0x0F00) >> 8] != byte(chip8.opcode & 0x00FF){
+			chip8.pc += 4
+		} else {
+			chip8.pc += 2
+		}
 	}
 	case 0xA000 : {	// ANNN Sets index to address NNN
 		chip8.index = chip8.opcode & 0x0FFF
