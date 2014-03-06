@@ -67,7 +67,7 @@ func NewChip8(fileName string) *Chip8 {
 //Step a cpu cycle
 func (chip8 *Chip8) Step() {
 	// Fetch
-	chip8.opcode = uint16(chip8.memory[chip8.pc]<<8) | uint16(chip8.memory[chip8.pc+1]) // OR value of two consecutive addresses to get two byte opcode
+	chip8.opcode = uint16(chip8.memory[chip8.pc])<<8 | uint16(chip8.memory[chip8.pc+1]) // OR value of two consecutive addresses to get two byte opcode
 	// Decode & execute
 	switch chip8.opcode & 0xF000 {
 	case 0x1000 : { // 1NNN Jumps to adress NNN
@@ -88,7 +88,7 @@ func (chip8 *Chip8) Step() {
 	case 0x4000 : {
 		
 	}
-	case 0xA000 : {	// ANNN Sets index to adress NNN
+	case 0xA000 : {	// ANNN Sets index to address NNN
 		chip8.index = chip8.opcode & 0x0FFF
 		chip8.pc += 2; 
 	}
@@ -118,7 +118,7 @@ func (chip8 *Chip8) String() string {
 func main() {
 	args := os.Args;
 	if len(args)>1 {
-		fmt.Print(args[1])
+		//fmt.Print(args[1])
 		chip8 := NewChip8(args[1]) // Assume args[1] is filename of rom 
 	//	for {  main loop off for developemnt
 			chip8.Step() // Step cpu cycle
