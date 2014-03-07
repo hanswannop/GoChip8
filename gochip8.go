@@ -7,8 +7,9 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
-	//"time"
+	"time"
 )
 
 var font = [80]byte{
@@ -31,18 +32,19 @@ var font = [80]byte{
 }
 
 type Chip8 struct {
-	opcode     uint16     	// Current opcode
-	memory     [4096]byte 	// 4k of memory
-	v          [16]byte   	// Registers v[15] holds carry flag
-	stack      [16]uint16 	// Stack can hold 16 addresses for functions / callbacks
-	sp         byte       	// Stack pointer, index to top of stack
-	index      uint16     	// Temp store for addresses, only low 12 bits used
-	pc         uint16     	// Program counter (address of next instruction)
-	delayTimer int        	// Counts down at 60Hz when set > 0
-	soundTimer int        	// Counts down at 60Hz when set > 0
-	screen     []byte	
-	width      int        	// Screen width in pixels
-	height     int        	// Screen height in pixels
+	opcode       uint16     // Current opcode
+	memory       [4096]byte // 4k of memory
+	v            [16]byte   // Registers v[15] holds carry flag
+	stack        [16]uint16 // Stack can hold 16 addresses for functions / callbacks
+	sp           byte       // Stack pointer, index to top of stack
+	index        uint16     // Temp store for addresses, only low 12 bits used
+	pc           uint16     // Program counter (address of next instruction)
+	delayTimer   int        // Counts down at 60Hz when set > 0
+	soundTimer   int        // Counts down at 60Hz when set > 0
+	screen       []byte     // Each pos in slice is one pixel on screen
+	width        uint16     // Screen width in pixels
+	height       uint16     // Screen height in pixels
+	needsDisplay bool       // Display flag, set for redraw
 }
 
 // Takes filename of the rom to load and returns initialised Chip8
@@ -51,8 +53,8 @@ func NewChip8(fileName string) *Chip8 {
 	cpu.pc = 0x200
 	cpu.width = 64
 	cpu.height = 32
-	cpu.screen = make([]byte, cpu.width * cpu.height)
-	for i := 0; i < 80; i++ { // Load the font into the first 80 bytes of memory
+	cpu.screen = make([]byte, cpu.width*cpu.height) // Initialize the screen slice
+	for i := 0; i < 80; i++ {                       // Load the font into the first 80 bytes of memory
 		cpu.memory[i] = font[i]
 	}
 	rom, error := ioutil.ReadFile(fileName) //Open rom file
@@ -77,7 +79,9 @@ func (chip8 *Chip8) Step() {
 			switch chip8.opcode & 0x000F {
 			case 0x0000: // 00E0 Clear the screen
 				{
-					// TODO CLEAR SCREEN
+					for i := 0; i < len(chip8.screen); i++ {
+						chip8.screen[i] = 0
+					}
 				}
 			case 0x000E: // 000E Returns from subroutine
 				{
@@ -131,7 +135,7 @@ func (chip8 *Chip8) Step() {
 			chip8.v[(chip8.opcode&0x0F00)>>8] += byte(chip8.opcode & 0x00FF)
 			chip8.pc += 2
 		}
-	case 0x8000: // Family of registerbinary arithmetic instuructions
+	case 0x8000: // Register binary arithmetic instuructions
 		{
 			switch chip8.opcode & 0x000F {
 			case 0x000: // 8XY0 Loads value stored in V[Y] into V[X]
@@ -139,16 +143,114 @@ func (chip8 *Chip8) Step() {
 					chip8.v[(chip8.opcode&0x0F00)>>8] = chip8.v[(chip8.opcode&0x00F0)>>4]
 					chip8.pc += 2
 				}
-			case 0x001: // 8XY1 Bitwise OR between of V[X] and V[Y], result stored in V[X]
+			case 0x001: // 8XY1 Bitwise OR between V[X] and V[Y], result stored in V[X]
 				{
-					chip8.v[(chip8.opcode&0x0F00)>>8] = (chip8.v[(chip8.opcode&0x0F00)>>8] | chip8.v[(chip8.opcode&0x00F0)>>4])
+					chip8.v[(chip8.opcode&0x0F00)>>8] |= chip8.v[(chip8.opcode&0x00F0)>>4]
 					chip8.pc += 2
 				}
+			case 0x002: // 8XY2 Bitwise AND between V[X] and V[Y], result stored in V[X]
+				{
+					chip8.v[(chip8.opcode&0x0F00)>>8] &= chip8.v[(chip8.opcode&0x00F0)>>4]
+					chip8.pc += 2
+				}
+			case 0x003: // 8XY3 Bitwise XOR between V[X] and V[Y], result stored in V[X]
+				{
+					chip8.v[(chip8.opcode&0x0F00)>>8] ^= chip8.v[(chip8.opcode&0x00F0)>>4]
+					chip8.pc += 2
+				}
+			case 0x004: // 8XY4 V[X] + V[Y], result stored in V[X], carry in V[0xF]
+				{
+					result := uint16(chip8.v[(chip8.opcode&0x0F00)>>8]) + uint16(chip8.v[(chip8.opcode&0x00F0)>>4])
+					chip8.v[(chip8.opcode&0x0F00)>>8] = byte(result) //Need to check casting behaviour in go to confirm
+					if result>>8 == 1 {
+						chip8.v[0xF] = 1
+					} else {
+						chip8.v[0xF] = 0
+					}
+					chip8.pc += 2
+				}
+			case 0x005: // 8XY5 V[X] - V[Y], result stored in V[X], !borrow in V[0xF]
+				{
+					if chip8.v[(chip8.opcode&0x0F00)>>8] > chip8.v[(chip8.opcode&0x00F0)>>4] {
+						chip8.v[0xF] = 1
+					} else {
+						chip8.v[0xF] = 0
+					}
+					chip8.v[(chip8.opcode&0x0F00)>>8] -= chip8.v[(chip8.opcode&0x00F0)>>4]
+					chip8.pc += 2
+				}
+			case 0x006: // 8X06 Shift right (divide by 2), set V[0xF] to 1 if least significant bit was 1
+				{
+					if chip8.v[(chip8.opcode&0x0F00)>>8]&0x01 == 1 {
+						chip8.v[0xF] = 1
+					} else {
+						chip8.v[0xF] = 0
+					}
+					chip8.v[(chip8.opcode&0x0F00)>>8] = chip8.v[(chip8.opcode&0x0F00)>>8] >> 1
+					chip8.pc += 2
+				}
+			case 0x007: // 8XY7 V[Y] - V[X], result stored in V[X], !borrow in V[0xF]
+				{
+					if chip8.v[(chip8.opcode&0x0F0)>>4] > chip8.v[(chip8.opcode&0x0F00)>>8] {
+						chip8.v[0xF] = 1
+					} else {
+						chip8.v[0xF] = 0
+					}
+					chip8.v[(chip8.opcode&0x0F00)>>8] = chip8.v[(chip8.opcode&0x00F0)>>4] - chip8.v[(chip8.opcode&0x0F00)>>8]
+					chip8.pc += 2
+				}
+			case 0x00E: // 8X0E Shift left (multiply by 2), set V[0xF] to 1 if most significant bit was 1
+				{
+					if chip8.v[(chip8.opcode&0x0F00)>>8]&0x80 == 1 {
+						chip8.v[0xF] = 1
+					} else {
+						chip8.v[0xF] = 0
+					}
+					chip8.v[(chip8.opcode&0x0F00)>>8] = chip8.v[(chip8.opcode&0x0F00)>>8] << 1
+					chip8.pc += 2
+				}
+			}
+		}
+	case 0x9000: // 9XY0 Skips next instruction if V[X] != V[Y]
+		{
+			if chip8.v[(chip8.opcode&0x0F00)>>8] != chip8.v[(chip8.opcode&0x00F0)>>4] {
+				chip8.pc += 4
+			} else {
+				chip8.pc += 2
 			}
 		}
 	case 0xA000: // ANNN Sets index to address NNN
 		{
 			chip8.index = chip8.opcode & 0x0FFF
+			chip8.pc += 2
+		}
+	case 0xB000: // BNNN Jump to address NNN + V[0]
+		{
+			chip8.pc = (chip8.opcode & 0x0FFF) + uint16(chip8.v[0])
+		}
+	case 0xC000: // CXKK Set V[X] to a random byte AND KK
+		{
+			chip8.v[0] = byte(uint16(rand.Int()) & (chip8.opcode & 0x00FF))
+			chip8.pc += 2
+		}
+	case 0xD000: // DXYN Draw sprite stored at address INDEX with pos (V[X], V[Y]), width 8 and height N
+		{ // V[OxF] is set if and pixel collides during draw
+			xPos := uint16(chip8.v[(chip8.opcode&0x0F00)>>8])
+			yPos := uint16(chip8.v[(chip8.opcode&0x00F0)>>4])
+			spriteHeight := chip8.opcode & 0x000F
+			for row := uint16(0); row < spriteHeight; row++ {
+				rowData := chip8.memory[chip8.index+row]
+				for col := uint16(0); col < 8; col++ {
+					if (rowData & (0x80 >> col)) != 0 { // If this pixel (row,col) in sprite in on
+						if chip8.screen[((yPos+row)*chip8.width)+xPos+col] == 1 { //If pixel (xPos+col,yPos+row) in screen is on
+							chip8.v[0xF] = 1
+						}
+						chip8.screen[((yPos+row)*chip8.width)+xPos+col] ^= 1
+					}
+
+				}
+			}
+			chip8.needsDisplay = true
 			chip8.pc += 2
 		}
 	default:
@@ -162,8 +264,8 @@ func (chip8 *Chip8) Step() {
 // Renders the screen of the as a string.
 func (chip8 *Chip8) String() string {
 	var screenBuf bytes.Buffer
-	for y := 0; y < chip8.height; y++ {
-		for x := 0; x < chip8.width; x++ {
+	for y := uint16(0); y < chip8.height; y++ {
+		for x := uint16(0); x < chip8.width; x++ {
 			var b byte
 			if chip8.screen[y*chip8.width+x] != 0 {
 				b = '*'
@@ -181,16 +283,19 @@ func main() {
 	args := os.Args
 	if len(args) > 1 {
 		//fmt.Print(args[1])
-		chip8 := NewChip8(args[1]) // Assume args[1] is filename of rom
+		chip8 := NewChip8(args[1])             // Assume args[1] is filename of rom
+		rand.Seed(time.Now().UTC().UnixNano()) // Seed random number generator
 		for {
 			chip8.Step() // Step cpu cycle
-			// Should have check for draw flag here
-			// Draw does not occur every cycle
-			fmt.Print("\n", chip8)       // Refresh screen.
+			if chip8.needsDisplay {
+				fmt.Print("\n", chip8) // Refresh screen.
+				chip8.needsDisplay = false
+			}
+			fmt.Printf("%X ", chip8.opcode)
 			//time.Sleep(time.Second / 60) //Run at 60Hz
 			// Execute another step each return for now
-			var input string 
-		    fmt.Scanln(&input)
+			var input string
+			fmt.Scanln(&input)
 			if input == "exit" { // Type exit to quit
 				break
 			}
