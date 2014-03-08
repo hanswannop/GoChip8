@@ -39,15 +39,19 @@ type Chip8 struct {
 	sp           byte       // Stack pointer, index to top of stack
 	index        uint16     // Temp store for addresses, only low 12 bits used
 	pc           uint16     // Program counter (address of next instruction)
-	delayTimer   int        // Counts down at 60Hz when set > 0
-	soundTimer   int        // Counts down at 60Hz when set > 0
+	delayTimer   byte       // Counts down at 60Hz when set > 0
+	soundTimer   byte       // Counts down at 60Hz when set > 0
 	screen       []byte     // Each pos in slice is one pixel on screen
 	width        uint16     // Screen width in pixels
 	height       uint16     // Screen height in pixels
 	needsDisplay bool       // Display flag, set for redraw
 }
 
-// Takes filename of the rom to load and returns initialised Chip8
+// TODO Returns true if key with specified code is pressed
+func (chip8 *Chip8) KeyPressed(keycode byte) bool {
+	return false
+}
+
 func NewChip8(fileName string) *Chip8 {
 	cpu := new(Chip8)
 	cpu.pc = 0x200
@@ -89,7 +93,13 @@ func (chip8 *Chip8) Step() {
 					chip8.pc = chip8.stack[chip8.sp]
 					chip8.pc += 2
 				}
+			default:
+				{
+					fmt.Printf("Opcode not implemented: 0x%X\n", chip8.opcode)
+					chip8.pc += 2
+				}
 			}
+
 		}
 	case 0x1000:
 		{ // 1NNN Jumps to adress NNN
@@ -238,6 +248,7 @@ func (chip8 *Chip8) Step() {
 			xPos := uint16(chip8.v[(chip8.opcode&0x0F00)>>8])
 			yPos := uint16(chip8.v[(chip8.opcode&0x00F0)>>4])
 			spriteHeight := chip8.opcode & 0x000F
+			chip8.v[0xF] = 0
 			for row := uint16(0); row < spriteHeight; row++ {
 				rowData := chip8.memory[chip8.index+row]
 				for col := uint16(0); col < 8; col++ {
@@ -252,6 +263,104 @@ func (chip8 *Chip8) Step() {
 			}
 			chip8.needsDisplay = true
 			chip8.pc += 2
+		}
+	case 0xE000:
+		{
+			switch chip8.opcode & 0x00FF {
+			case 0x009E: // EX9E Skip next instruction if key with value V[X] is pressed
+				{
+					if chip8.KeyPressed(chip8.v[(chip8.opcode&0x0F00)>>8]) {
+						chip8.pc += 4
+					} else {
+						chip8.pc += 2
+					}
+				}
+			case 0x00A1: // EXA1 Skip next instruction if key with value V[X] isn't pressed
+				{
+					if !chip8.KeyPressed(chip8.v[(chip8.opcode&0x0F00)>>8]) {
+						chip8.pc += 4
+					} else {
+						chip8.pc += 2
+					}
+				}
+			default:
+				{
+					fmt.Printf("Opcode not implemented: 0x%X\n", chip8.opcode)
+					chip8.pc += 2
+				}
+			}
+		}
+	case 0xF000:
+		{
+			switch chip8.opcode & 0x00FF {
+			case 0x0007: // FX07 Store delay timer value in V[X]
+				{
+					chip8.v[(chip8.opcode&0x0F00)>>8] = chip8.delayTimer
+					chip8.pc += 2
+				}
+			case 0x000A: // FX07 Wait for key press, store key value in V[X] TODO
+				{ // Need real wait for key press with actual keycode storage
+
+					var input string
+					fmt.Scanln(&input)
+					chip8.v[(chip8.opcode&0x0F00)>>8] = 1
+					chip8.pc += 2
+				}
+			case 0x0015: // FX15 Set delay timer to value of V[X]
+				{
+					chip8.delayTimer = chip8.v[(chip8.opcode&0x0F00)>>8]
+					chip8.pc += 2
+				}
+			case 0x0018: // FX18 Set sound timer to value of V[X]
+				{
+					chip8.soundTimer = chip8.v[(chip8.opcode&0x0F00)>>8]
+					chip8.pc += 2
+				}
+			case 0x001E: // FX1E Set INDEX = INDEX + V[X]
+				{
+					if chip8.index+uint16(chip8.v[(chip8.opcode&0x0F00)>>8]) > 0xFFF {
+						chip8.v[0xF] = 1
+					} else {
+						chip8.v[0xF] = 0
+					}
+					chip8.index += uint16(chip8.v[(chip8.opcode&0x0F00)>>8])
+					chip8.pc += 2
+				}
+			case 0x0029: // FX29 Set INDEX to memory address of sprite with number V[X]
+				{
+					chip8.index = uint16(chip8.v[(chip8.opcode&0x0F00)>>8] * 5) // Font characters are 5 bytes each
+					chip8.pc += 2
+				}
+			case 0x0033: // FX33 Store decimal representation of V[X] in I, I+1, I+2
+				{
+					value := chip8.v[(chip8.opcode&0x0F00)>>8]
+					chip8.memory[chip8.index] = value / 100
+					chip8.memory[chip8.index+1] = value / 10 % 10
+					chip8.memory[chip8.index+2] = (value % 100) % 10
+					chip8.pc += 2
+				}
+			case 0x0055: // FX55 Store V[0] to V[X] in memory starting at address INDEX
+				{
+					lastReg := (chip8.opcode & 0x0F00) >> 8
+					for i := uint16(0); i <= lastReg; i++ {
+						chip8.memory[chip8.index+i] = chip8.v[i]
+					}
+					chip8.pc += 2
+				}
+			case 0x0065: // FX65 Load V[0] to V[X] from memory starting at address INDEX
+				{
+					lastReg := (chip8.opcode & 0x0F00) >> 8
+					for i := uint16(0); i <= lastReg; i++ {
+						chip8.v[i] = chip8.memory[chip8.index+i]
+					}
+					chip8.pc += 2
+				}
+			default:
+				{
+					fmt.Printf("Opcode not implemented: 0x%X\n", chip8.opcode)
+					chip8.pc += 2
+				}
+			}
 		}
 	default:
 		{
@@ -286,19 +395,22 @@ func main() {
 		chip8 := NewChip8(args[1])             // Assume args[1] is filename of rom
 		rand.Seed(time.Now().UTC().UnixNano()) // Seed random number generator
 		for {
-			chip8.Step() // Step cpu cycle
+			chip8.Step()              // Step cpu cycle
+			if chip8.delayTimer > 0 { // Update in seperate thread to keep at 60Hz?
+				chip8.delayTimer--
+			}
 			if chip8.needsDisplay {
 				fmt.Print("\n", chip8) // Refresh screen.
 				chip8.needsDisplay = false
 			}
-			fmt.Printf("%X ", chip8.opcode)
-			//time.Sleep(time.Second / 60) //Run at 60Hz
-			// Execute another step each return for now
-			var input string
-			fmt.Scanln(&input)
-			if input == "exit" { // Type exit to quit
-				break
-			}
+			//fmt.Printf("%X ", chip8.opcode)
+			time.Sleep(time.Second / 60) //Run at 60Hz
+			//Execute another step each return for now
+			//var input string
+			//fmt.Scanln(&input)
+			//if input == "exit" { // Type exit to quit
+			//break
+			//}
 		}
 		for i := 0; i < len(chip8.memory); i++ { // Print memory map on exit
 			fmt.Printf("%X ", chip8.memory[i])
