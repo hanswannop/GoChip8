@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/rand"
-	"os"
 	"time"
 )
 
@@ -57,6 +56,7 @@ func NewChip8(fileName string) *Chip8 {
 	cpu.pc = 0x200
 	cpu.width = 64
 	cpu.height = 32
+	rand.Seed(time.Now().UTC().UnixNano()) // Seed random number generator
 	cpu.screen = make([]byte, cpu.width*cpu.height) // Initialize the screen slice
 	for i := 0; i < 80; i++ {                       // Load the font into the first 80 bytes of memory
 		cpu.memory[i] = font[i]
@@ -387,7 +387,7 @@ func (chip8 *Chip8) String() string {
 	}
 	return screenBuf.String()
 }
-
+/*
 func main() {
 	args := os.Args
 	if len(args) > 1 {
@@ -419,4 +419,4 @@ func main() {
 	} else {
 		fmt.Print("Must provide rom as argument.\n")
 	}
-}
+}*/
