@@ -49,7 +49,7 @@ type Chip8 struct {
 
 // TODO Returns true if key with specified code is pressed
 func (chip8 *Chip8) KeyPressed(keycode byte) bool {
-	return false
+	return true
 }
 
 func NewChip8(fileName string) *Chip8 {
@@ -404,7 +404,7 @@ func main() {
 				chip8.needsDisplay = false
 			}
 			//fmt.Printf("%X ", chip8.opcode)
-			time.Sleep(time.Second / 60) //Run at 60Hz
+			time.Sleep(time.Second / 1000) //Run at 60Hz
 			//Execute another step each return for now
 			//var input string
 			//fmt.Scanln(&input)
