@@ -51,7 +51,7 @@ func (chip8 *Chip8) KeyPressed(keycode byte) bool {
 	return true
 }
 
-func NewChip8(fileName string) *Chip8 {
+func NewChip8() *Chip8 {
 	cpu := new(Chip8)
 	cpu.pc = 0x200
 	cpu.width = 64
@@ -61,15 +61,18 @@ func NewChip8(fileName string) *Chip8 {
 	for i := 0; i < 80; i++ {                       // Load the font into the first 80 bytes of memory
 		cpu.memory[i] = font[i]
 	}
+	return cpu
+}
+
+func (chip8 *Chip8) LoadRom(fileName string) {
 	rom, error := ioutil.ReadFile(fileName) //Open rom file
 	if error != nil {
 		panic(error)
 	}
 	// Need check here to make sure rom fits in memory
 	for i := 0; i < len(rom); i++ { // Read rom into memory
-		cpu.memory[0x200+i] = rom[i]
+		chip8.memory[0x200+i] = rom[i]
 	}
-	return cpu
 }
 
 //Step a cpu cycle
